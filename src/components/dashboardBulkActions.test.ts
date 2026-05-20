@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  getAutoMatchTargets,
+  getBatchReadyOrders,
+  type ConversationOverrideMap,
+} from "./dashboardBulkActions";
+import type { TrackingOrder } from "@/types/order";
+
+const baseOrder: TrackingOrder = {
+  rowNumber: 2,
+  id: "2",
+  fb_name: "Nan Napat",
+  tracking_no: "",
+  customer_name: "Nan Napat",
+  cod_amount: 0,
+  message: "tracking message",
+  subscriber_id: "",
+  match_status: "pending",
+  send_status: "pending",
+  sent_at: "",
+  error: "",
+};
+
+describe("dashboard bulk helpers", () => {
+  it("auto-matches rows that have a name and no conversation yet", () => {
+    const overrides: ConversationOverrideMap = {
+      4: { conversationId: "conversation_4", name: "Already Matched" },
+    };
+    const attempted = new Set([5]);
+
+    expect(
+      getAutoMatchTargets(
+        [
+          baseOrder,
+          { ...baseOrder, rowNumber: 3, fb_name: "" },
+          { ...baseOrder, rowNumber: 4 },
+          { ...baseOrder, rowNumber: 5 },
+          { ...baseOrder, rowNumber: 6, subscriber_id: "conversation_6" },
+          { ...baseOrder, rowNumber: 7, send_status: "sent" },
+        ],
+        overrides,
+        attempted,
+      ).map((order) => order.rowNumber),
+    ).toEqual([2]);
+  });
+
+  it("returns selected rows that have a conversation and message for batch sending", () => {
+    const overrides: ConversationOverrideMap = {
+      2: { conversationId: "conversation_2", name: "Nan Napat" },
+    };
+    const selected = new Set([2, 3, 4, 5]);
+
+    expect(
+      getBatchReadyOrders(
+        [
+          baseOrder,
+          { ...baseOrder, rowNumber: 3, subscriber_id: "conversation_3" },
+          { ...baseOrder, rowNumber: 4, message: "" },
+          { ...baseOrder, rowNumber: 5, send_status: "sent", subscriber_id: "conversation_5" },
+        ],
+        selected,
+        overrides,
+      ).map((order) => order.rowNumber),
+    ).toEqual([2, 3]);
+  });
+});
