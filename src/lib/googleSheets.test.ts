@@ -41,6 +41,28 @@ describe("Google Sheets env parsing", () => {
 });
 
 describe("normalizeSheetRows", () => {
+  it("supports the updated sheet layout: FB Name, tracking number, Name, COD, and summary", () => {
+    const rows = [
+      ["FB Name", "เลขพัสดุ", "Name", "ยอดปลายทาง", "สรุป"],
+      [
+        "Sutthisak Kongchom",
+        "TH123456789",
+        "นายสุทธิศักดิ์ กังชม",
+        "0",
+        "ร้านบ้านรวมทะเลจัดส่งสินค้าแล้วครับ 📦\n\nเช็คสถานะ : https://www.flashexpress.co.th/fle/tracking?se=TH123456789\nชื่อผู้สั่ง : Sutthisak Kongchom\nชื่อผู้รับสินค้า : นายสุทธิศักดิ์ กังชม\nยอดชำระปลายทาง : โอนแล้ว",
+      ],
+    ];
+
+    expect(normalizeSheetRows(rows)[0]).toMatchObject({
+      fb_name: "Sutthisak Kongchom",
+      tracking_no: "TH123456789",
+      customer_name: "นายสุทธิศักดิ์ กังชม",
+      cod_amount: 0,
+      message:
+        "ร้านบ้านรวมทะเลจัดส่งสินค้าแล้วครับ 📦\n\nเช็คสถานะ : https://www.flashexpress.co.th/fle/tracking?se=TH123456789\nชื่อผู้สั่ง : Sutthisak Kongchom\nชื่อผู้รับสินค้า : นายสุทธิศักดิ์ กังชม\nยอดชำระปลายทาง : โอนแล้ว",
+    });
+  });
+
   it("supports the simple sheet layout from the screenshot: FB Name, optional COD, and message", () => {
     const rows = [
       ["", "FB Name", "ยอดปลายทาง (ถ้ามี)", ""],
