@@ -4,9 +4,11 @@ import {
   buildWritableHeaderPlan,
   extractGoogleSheetGid,
   extractGoogleSheetId,
+  findCachedConversationInRows,
   filterOrdersByStatus,
   formatSheetRange,
   normalizePrivateKey,
+  normalizeConversationRows,
   normalizeSheetRows,
 } from "./googleSheets";
 
@@ -42,23 +44,21 @@ describe("Google Sheets env parsing", () => {
 });
 
 describe("buildWritableHeaderPlan", () => {
-  it("adds conversation_id and status columns when the sheet only has order fields", () => {
+  it("adds status columns when the sheet only has order fields", () => {
     const plan = buildWritableHeaderPlan(
       ["FB Name", "Tracking No", "Name", "COD", "Summary"],
-      ["subscriber_id", "status", "match_status", "send_status", "sent_at", "error"],
+      ["status", "match_status", "send_status", "sent_at", "error"],
     );
 
     expect(plan.headerWrites).toEqual([
-      { header: "subscriber_id", index: 5, label: "conversation_id" },
-      { header: "status", index: 6, label: "Status" },
-      { header: "match_status", index: 7, label: "match_status" },
-      { header: "send_status", index: 8, label: "send_status" },
-      { header: "sent_at", index: 9, label: "sent_at" },
-      { header: "error", index: 10, label: "error" },
+      { header: "status", index: 5, label: "Status" },
+      { header: "match_status", index: 6, label: "match_status" },
+      { header: "send_status", index: 7, label: "send_status" },
+      { header: "sent_at", index: 8, label: "sent_at" },
+      { header: "error", index: 9, label: "error" },
     ]);
-    expect(plan.headerIndex.get("subscriber_id")).toBe(5);
-    expect(plan.headerIndex.get("status")).toBe(6);
-    expect(plan.headerIndex.get("match_status")).toBe(7);
+    expect(plan.headerIndex.get("status")).toBe(5);
+    expect(plan.headerIndex.get("match_status")).toBe(6);
   });
 
   it("reuses an existing conversation_id column instead of adding another one", () => {
@@ -66,6 +66,29 @@ describe("buildWritableHeaderPlan", () => {
 
     expect(plan.headerWrites).toEqual([]);
     expect(plan.headerIndex.get("subscriber_id")).toBe(2);
+  });
+});
+
+describe("conversation cache rows", () => {
+  it("normalizes and finds cached conversations by FB name", () => {
+    const rows = [
+      ["fb_name", "conversation_id", "conversation_name", "platform", "account_id", "match_status", "last_matched_at", "note"],
+      ["  Nan   Napat ", "conversation_123", "Nan Napat", "facebook", "account_1", "matched", "2026-05-19", ""],
+    ];
+
+    expect(normalizeConversationRows(rows)).toEqual([
+      {
+        fb_name: "Nan   Napat",
+        conversation_id: "conversation_123",
+        conversation_name: "Nan Napat",
+        platform: "facebook",
+        account_id: "account_1",
+        match_status: "matched",
+        last_matched_at: "2026-05-19",
+        note: "",
+      },
+    ]);
+    expect(findCachedConversationInRows(rows, "nan napat")?.conversation_id).toBe("conversation_123");
   });
 });
 

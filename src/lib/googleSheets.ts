@@ -25,6 +25,30 @@ export const SHEET_HEADERS = [
 
 export type SheetHeader = (typeof SHEET_HEADERS)[number];
 
+export const CONVERSATION_HEADERS = [
+  "fb_name",
+  "conversation_id",
+  "conversation_name",
+  "platform",
+  "account_id",
+  "match_status",
+  "last_matched_at",
+  "note",
+] as const;
+
+export type ConversationHeader = (typeof CONVERSATION_HEADERS)[number];
+
+export interface ConversationCacheEntry {
+  fb_name: string;
+  conversation_id: string;
+  conversation_name: string;
+  platform: string;
+  account_id: string;
+  match_status: string;
+  last_matched_at: string;
+  note: string;
+}
+
 const headerAliases: Record<SheetHeader, string[]> = {
   id: ["id", "ID"],
   fb_name: ["fb_name", "FB Name", "ชื่อ FB", "ชื่อเฟส", "ชื่อ Facebook", "Name"],
@@ -41,7 +65,6 @@ const headerAliases: Record<SheetHeader, string[]> = {
 };
 
 const writableHeaderLabels: Partial<Record<SheetHeader, string>> = {
-  subscriber_id: "conversation_id",
   status: "Status",
   match_status: "match_status",
   send_status: "send_status",
@@ -49,8 +72,18 @@ const writableHeaderLabels: Partial<Record<SheetHeader, string>> = {
   error: "error",
 };
 
+const conversationHeaderAliases: Record<ConversationHeader, string[]> = {
+  fb_name: ["fb_name", "FB Name", "Facebook Name", "Name"],
+  conversation_id: ["conversation_id", "Conversation ID", "conversationId"],
+  conversation_name: ["conversation_name", "Conversation Name", "name"],
+  platform: ["platform", "Platform"],
+  account_id: ["account_id", "Account ID", "accountId"],
+  match_status: ["match_status", "Match Status"],
+  last_matched_at: ["last_matched_at", "Last Matched At"],
+  note: ["note", "Note"],
+};
+
 const defaultWritableHeaders: SheetHeader[] = [
-  "subscriber_id",
   "status",
   "match_status",
   "send_status",
@@ -110,6 +143,10 @@ function getSpreadsheetId() {
   return extractGoogleSheetId(getEnv("GOOGLE_SHEET_ID"));
 }
 
+function getConversationSheetName() {
+  return (process.env.GOOGLE_CONVERSATION_SHEET_NAME ?? "conversation_id").trim();
+}
+
 export function formatSheetRange(sheetName: string, range: string) {
   const escapedSheetName = sheetName.replace(/'/g, "''");
   const needsQuotes = /[^A-Za-z0-9_]/.test(escapedSheetName);
@@ -148,7 +185,7 @@ async function getSheetProperties(sheetName: string) {
   });
   const matchingSheet = response.data.sheets?.find((sheet) => sheet.properties?.title === sheetName);
   const properties = matchingSheet?.properties;
-  if (!properties?.sheetId) {
+  if (properties?.sheetId === undefined || properties.sheetId === null) {
     throw new Error(`Sheet ${sheetName} not found`);
   }
 
@@ -182,6 +219,55 @@ async function ensureSheetColumnCount(sheetName: string, minimumColumnCount: num
       ],
     },
   });
+}
+
+async function ensureConversationSheet() {
+  const sheetName = getConversationSheetName();
+  const response = await getSheetsClient().spreadsheets.get({
+    spreadsheetId: getSpreadsheetId(),
+    fields: "sheets(properties(title,sheetId,gridProperties(columnCount)))",
+  });
+  const existingSheet = response.data.sheets?.find((sheet) => sheet.properties?.title === sheetName);
+
+  if (!existingSheet) {
+    await getSheetsClient().spreadsheets.batchUpdate({
+      spreadsheetId: getSpreadsheetId(),
+      requestBody: {
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title: sheetName,
+                gridProperties: {
+                  columnCount: CONVERSATION_HEADERS.length,
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+  } else if ((existingSheet.properties?.gridProperties?.columnCount ?? 0) < CONVERSATION_HEADERS.length) {
+    await ensureSheetColumnCount(sheetName, CONVERSATION_HEADERS.length);
+  }
+
+  const headerResponse = await getSheetsClient().spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: formatSheetRange(sheetName, "A1:H1"),
+  });
+  const headerRow = ((headerResponse.data.values ?? [[]]) as string[][])[0] ?? [];
+  if (CONVERSATION_HEADERS.some((header, index) => headerRow[index] !== header)) {
+    await getSheetsClient().spreadsheets.values.update({
+      spreadsheetId: getSpreadsheetId(),
+      range: formatSheetRange(sheetName, "A1:H1"),
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[...CONVERSATION_HEADERS]],
+      },
+    });
+  }
+
+  return sheetName;
 }
 
 function getSheetsClient() {
@@ -222,6 +308,10 @@ function normalizeHeader(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizeConversationLookupName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function buildHeaderIndex(headerRow: string[]) {
   const normalizedHeaders = headerRow.map((header) => normalizeHeader(header));
   const index = new Map<string, number>();
@@ -238,6 +328,21 @@ function buildHeaderIndex(headerRow: string[]) {
     const fbIndex = index.get("fb_name")!;
     const codIndex = index.get("cod_amount");
     index.set("message", codIndex !== undefined ? codIndex + 1 : fbIndex + 1);
+  }
+
+  return index;
+}
+
+function buildConversationHeaderIndex(headerRow: string[]) {
+  const normalizedHeaders = headerRow.map((header) => normalizeHeader(header));
+  const index = new Map<ConversationHeader, number>();
+
+  for (const header of CONVERSATION_HEADERS) {
+    const aliases = conversationHeaderAliases[header].map(normalizeHeader);
+    const foundIndex = normalizedHeaders.findIndex((value) => aliases.includes(value));
+    if (foundIndex !== -1) {
+      index.set(header, foundIndex);
+    }
   }
 
   return index;
@@ -270,6 +375,52 @@ export function buildWritableHeaderPlan(headerRow: string[], requestedHeaders: S
 function cell(row: string[], headerIndex: Map<string, number>, header: SheetHeader) {
   const index = headerIndex.get(header);
   return index === undefined ? "" : String(row[index] ?? "").trim();
+}
+
+function conversationCell(row: string[], headerIndex: Map<ConversationHeader, number>, header: ConversationHeader) {
+  const index = headerIndex.get(header);
+  return index === undefined ? "" : String(row[index] ?? "").trim();
+}
+
+export function normalizeConversationRows(values: string[][] = []): ConversationCacheEntry[] {
+  if (values.length === 0) {
+    return [];
+  }
+
+  const headerIndex = buildConversationHeaderIndex(values[0]);
+  return values.slice(1).flatMap((row) => {
+    const fb_name = conversationCell(row, headerIndex, "fb_name");
+    const conversation_id = conversationCell(row, headerIndex, "conversation_id");
+    if (!fb_name && !conversation_id) {
+      return [];
+    }
+
+    return [
+      {
+        fb_name,
+        conversation_id,
+        conversation_name: conversationCell(row, headerIndex, "conversation_name"),
+        platform: conversationCell(row, headerIndex, "platform"),
+        account_id: conversationCell(row, headerIndex, "account_id"),
+        match_status: conversationCell(row, headerIndex, "match_status"),
+        last_matched_at: conversationCell(row, headerIndex, "last_matched_at"),
+        note: conversationCell(row, headerIndex, "note"),
+      },
+    ];
+  });
+}
+
+export function findCachedConversationInRows(values: string[][] = [], fbName: string) {
+  const lookupName = normalizeConversationLookupName(fbName);
+  if (!lookupName) {
+    return null;
+  }
+
+  return (
+    normalizeConversationRows(values).find(
+      (entry) => normalizeConversationLookupName(entry.fb_name) === lookupName && Boolean(entry.conversation_id),
+    ) ?? null
+  );
 }
 
 export function normalizeSheetRows(values: string[][] = []): TrackingOrder[] {
@@ -333,6 +484,55 @@ export function filterOrdersByStatus(orders: TrackingOrder[], status?: OrderStat
   }
 
   return orders.filter((order) => order.send_status === status || order.match_status === status);
+}
+
+export async function getCachedConversationByName(fbName: string) {
+  const sheetName = await ensureConversationSheet();
+  const response = await getSheetsClient().spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: formatSheetRange(sheetName, "A:H"),
+  });
+
+  return findCachedConversationInRows((response.data.values ?? []) as string[][], fbName);
+}
+
+export async function saveConversationCacheEntry(
+  entry: Omit<ConversationCacheEntry, "last_matched_at" | "note"> & Partial<Pick<ConversationCacheEntry, "last_matched_at" | "note">>,
+) {
+  if (!entry.fb_name.trim() || !entry.conversation_id.trim()) {
+    return;
+  }
+
+  const sheetName = await ensureConversationSheet();
+  const response = await getSheetsClient().spreadsheets.values.get({
+    spreadsheetId: getSpreadsheetId(),
+    range: formatSheetRange(sheetName, "A:H"),
+  });
+  const values = (response.data.values ?? []) as string[][];
+  const lookupName = normalizeConversationLookupName(entry.fb_name);
+  const existingIndex = normalizeConversationRows(values).findIndex(
+    (cached) => normalizeConversationLookupName(cached.fb_name) === lookupName,
+  );
+  const rowNumber = existingIndex === -1 ? values.length + 1 : existingIndex + 2;
+  const rowValues = [
+    entry.fb_name.trim(),
+    entry.conversation_id.trim(),
+    entry.conversation_name.trim(),
+    entry.platform.trim(),
+    entry.account_id.trim(),
+    entry.match_status.trim(),
+    entry.last_matched_at ?? new Date().toISOString(),
+    entry.note ?? "",
+  ];
+
+  await getSheetsClient().spreadsheets.values.update({
+    spreadsheetId: getSpreadsheetId(),
+    range: formatSheetRange(sheetName, `A${rowNumber}:H${rowNumber}`),
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [rowValues],
+    },
+  });
 }
 
 export async function getOrders(status?: OrderStatusFilter | string | null) {
