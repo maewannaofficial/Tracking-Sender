@@ -8,6 +8,7 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
 
     if (candidates.length === 0) {
       await updateOrderCells(rowNumber, {
+        status: "หาไม่เจอ",
         match_status: "not_found",
         error: "",
       });
@@ -18,6 +19,7 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
       const [subscriber] = candidates;
       await updateOrderCells(rowNumber, {
         subscriber_id: subscriber.conversation_id,
+        status: "พร้อมส่ง",
         match_status: "matched",
         error: "",
       });
@@ -29,6 +31,7 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
     }
 
     await updateOrderCells(rowNumber, {
+      status: "ต้องเลือก",
       match_status: "multiple_matches",
       error: "",
     });
@@ -39,6 +42,7 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown matching error";
     await updateOrderCells(rowNumber, {
+      status: "หาไม่เจอ",
       match_status: "error",
       error: message,
     });
@@ -49,6 +53,7 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
 export async function selectSubscriberForRow(rowNumber: number, subscriber_id: string) {
   await updateOrderCells(rowNumber, {
     subscriber_id,
+    status: "พร้อมส่ง",
     match_status: "matched",
     error: "",
   });
@@ -70,6 +75,11 @@ export async function sendMessageForRow(rowNumber: number, now = new Date(), sel
   };
   const validationError = validateBeforeSend(orderToSend);
   if (validationError) {
+    await updateOrderCells(rowNumber, {
+      status: validationError.includes("conversationId") ? "หาไม่เจอ" : "ส่งไม่สำเร็จ",
+      send_status: "failed",
+      error: validationError,
+    });
     return { status: "failed" as const, error: validationError };
   }
 
@@ -77,6 +87,7 @@ export async function sendMessageForRow(rowNumber: number, now = new Date(), sel
     await sendZernioInboxMessage(orderToSend.subscriber_id, orderToSend.message);
     const sent_at = now.toISOString();
     await updateOrderCells(rowNumber, {
+      status: "ส่งแล้ว",
       send_status: "sent",
       sent_at,
       error: "",
@@ -85,6 +96,7 @@ export async function sendMessageForRow(rowNumber: number, now = new Date(), sel
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown sending error";
     await updateOrderCells(rowNumber, {
+      status: "ส่งไม่สำเร็จ",
       send_status: "failed",
       error: message,
     });

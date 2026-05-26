@@ -16,13 +16,14 @@ export const SHEET_HEADERS = [
   "cod_amount",
   "message",
   "subscriber_id",
+  "status",
   "match_status",
   "send_status",
   "sent_at",
   "error",
 ] as const;
 
-type SheetHeader = (typeof SHEET_HEADERS)[number];
+export type SheetHeader = (typeof SHEET_HEADERS)[number];
 
 const headerAliases: Record<SheetHeader, string[]> = {
   id: ["id", "ID"],
@@ -32,11 +33,30 @@ const headerAliases: Record<SheetHeader, string[]> = {
   cod_amount: ["cod_amount", "COD", "ยอดปลายทาง", "ยอดปลายทาง (ถ้ามี)", "ยอดชำระปลายทาง"],
   message: ["message", "Message", "Summary", "สรุป", "ข้อความ", "ข้อความที่ต้องส่ง"],
   subscriber_id: ["conversation_id", "Conversation ID", "conversationId", "subscriber_id", "Subscriber ID", "PSID"],
+  status: ["Status", "status"],
   match_status: ["match_status", "Match Status"],
-  send_status: ["send_status", "Send Status", "Status", "สถานะ"],
+  send_status: ["send_status", "Send Status"],
   sent_at: ["sent_at", "Sent At"],
   error: ["error", "Error"],
 };
+
+const writableHeaderLabels: Partial<Record<SheetHeader, string>> = {
+  subscriber_id: "conversation_id",
+  status: "Status",
+  match_status: "match_status",
+  send_status: "send_status",
+  sent_at: "sent_at",
+  error: "error",
+};
+
+const defaultWritableHeaders: SheetHeader[] = [
+  "subscriber_id",
+  "status",
+  "match_status",
+  "send_status",
+  "sent_at",
+  "error",
+];
 
 const matchStatuses = new Set<MatchStatus>([
   "pending",
@@ -121,6 +141,49 @@ async function getConfiguredSheetName() {
   return resolvedSheetName;
 }
 
+async function getSheetProperties(sheetName: string) {
+  const response = await getSheetsClient().spreadsheets.get({
+    spreadsheetId: getSpreadsheetId(),
+    fields: "sheets(properties(title,sheetId,gridProperties(columnCount)))",
+  });
+  const matchingSheet = response.data.sheets?.find((sheet) => sheet.properties?.title === sheetName);
+  const properties = matchingSheet?.properties;
+  if (!properties?.sheetId) {
+    throw new Error(`Sheet ${sheetName} not found`);
+  }
+
+  return {
+    sheetId: properties.sheetId,
+    columnCount: properties.gridProperties?.columnCount ?? 0,
+  };
+}
+
+async function ensureSheetColumnCount(sheetName: string, minimumColumnCount: number) {
+  const { sheetId, columnCount } = await getSheetProperties(sheetName);
+  if (columnCount >= minimumColumnCount) {
+    return;
+  }
+
+  await getSheetsClient().spreadsheets.batchUpdate({
+    spreadsheetId: getSpreadsheetId(),
+    requestBody: {
+      requests: [
+        {
+          updateSheetProperties: {
+            properties: {
+              sheetId,
+              gridProperties: {
+                columnCount: minimumColumnCount,
+              },
+            },
+            fields: "gridProperties.columnCount",
+          },
+        },
+      ],
+    },
+  });
+}
+
 function getSheetsClient() {
   if (!sheetsClient) {
     const auth = new google.auth.JWT({
@@ -178,6 +241,30 @@ function buildHeaderIndex(headerRow: string[]) {
   }
 
   return index;
+}
+
+export function buildWritableHeaderPlan(headerRow: string[], requestedHeaders: SheetHeader[]) {
+  const headerIndex = buildHeaderIndex(headerRow);
+  const nextHeaderRow = [...headerRow];
+  const headerWrites: { header: SheetHeader; index: number; label: string }[] = [];
+
+  for (const header of requestedHeaders) {
+    if (headerIndex.has(header)) {
+      continue;
+    }
+
+    const label = writableHeaderLabels[header];
+    if (!label) {
+      continue;
+    }
+
+    const index = nextHeaderRow.length;
+    nextHeaderRow.push(label);
+    headerIndex.set(header, index);
+    headerWrites.push({ header, index, label });
+  }
+
+  return { headerIndex, headerWrites };
 }
 
 function cell(row: string[], headerIndex: Map<string, number>, header: SheetHeader) {
@@ -252,10 +339,12 @@ export async function getOrders(status?: OrderStatusFilter | string | null) {
   const sheetName = await getConfiguredSheetName();
   const response = await getSheetsClient().spreadsheets.values.get({
     spreadsheetId: getSpreadsheetId(),
-    range: formatSheetRange(sheetName, "A:K"),
+    range: formatSheetRange(sheetName, "A:Z"),
   });
+  const values = (response.data.values ?? []) as string[][];
+  await ensureWritableHeaders(sheetName, values[0] ?? [], defaultWritableHeaders);
 
-  return filterOrdersByStatus(normalizeSheetRows((response.data.values ?? []) as string[][]), status);
+  return filterOrdersByStatus(normalizeSheetRows(values), status);
 }
 
 export async function getOrderByRowNumber(rowNumber: number) {
@@ -276,27 +365,69 @@ function columnName(index: number) {
   return column;
 }
 
+async function ensureWritableHeaders(sheetName: string, headerRow: string[], requestedHeaders: SheetHeader[]) {
+  if (headerRow.length === 0) {
+    return;
+  }
+
+  const { headerWrites } = buildWritableHeaderPlan(headerRow, requestedHeaders);
+  if (headerWrites.length === 0) {
+    return;
+  }
+  await ensureSheetColumnCount(sheetName, Math.max(...headerWrites.map((write) => write.index + 1)));
+
+  await getSheetsClient().spreadsheets.values.batchUpdate({
+    spreadsheetId: getSpreadsheetId(),
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: headerWrites.map(({ index, label }) => {
+        const column = columnName(index);
+        return {
+          range: formatSheetRange(sheetName, `${column}1`),
+          values: [[label]],
+        };
+      }),
+    },
+  });
+}
+
 export async function updateOrderCells(rowNumber: number, patch: Partial<Record<SheetHeader, string | number>>) {
   const sheetName = await getConfiguredSheetName();
   const headerResponse = await getSheetsClient().spreadsheets.values.get({
     spreadsheetId: getSpreadsheetId(),
-    range: formatSheetRange(sheetName, "A1:K1"),
+    range: formatSheetRange(sheetName, "A1:Z1"),
   });
-  const headerIndex = buildHeaderIndex(((headerResponse.data.values ?? [[]]) as string[][])[0] ?? []);
-  const data = Object.entries(patch).flatMap(([header, value]) => {
-    const index = headerIndex.get(header);
-    if (index === undefined) {
-      return [];
-    }
+  const headerRow = ((headerResponse.data.values ?? [[]]) as string[][])[0] ?? [];
+  const requestedHeaders = Object.keys(patch).filter((header): header is SheetHeader =>
+    (SHEET_HEADERS as readonly string[]).includes(header),
+  );
+  const { headerIndex, headerWrites } = buildWritableHeaderPlan(headerRow, requestedHeaders);
+  if (headerWrites.length > 0) {
+    await ensureSheetColumnCount(sheetName, Math.max(...headerWrites.map((write) => write.index + 1)));
+  }
+  const data = [
+    ...headerWrites.map(({ index, label }) => {
+      const column = columnName(index);
+      return {
+        range: formatSheetRange(sheetName, `${column}1`),
+        values: [[label]],
+      };
+    }),
+    ...Object.entries(patch).flatMap(([header, value]) => {
+      const index = headerIndex.get(header);
+      if (index === undefined) {
+        return [];
+      }
 
-    const column = columnName(index);
-    return [
-      {
-        range: formatSheetRange(sheetName, `${column}${rowNumber}`),
-        values: [[String(value ?? "")]],
-      },
-    ];
-  });
+      const column = columnName(index);
+      return [
+        {
+          range: formatSheetRange(sheetName, `${column}${rowNumber}`),
+          values: [[String(value ?? "")]],
+        },
+      ];
+    }),
+  ];
 
   if (data.length === 0) {
     return;

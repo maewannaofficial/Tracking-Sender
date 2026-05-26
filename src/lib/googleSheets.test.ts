@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildWritableHeaderPlan,
   extractGoogleSheetGid,
   extractGoogleSheetId,
   filterOrdersByStatus,
@@ -37,6 +38,34 @@ describe("Google Sheets env parsing", () => {
   it("quotes sheet names with spaces or Thai characters in ranges", () => {
     expect(formatSheetRange("tracking_messages", "A:K")).toBe("tracking_messages!A:K");
     expect(formatSheetRange("แจกเลขพัสดุ Flash", "A:K")).toBe("'แจกเลขพัสดุ Flash'!A:K");
+  });
+});
+
+describe("buildWritableHeaderPlan", () => {
+  it("adds conversation_id and status columns when the sheet only has order fields", () => {
+    const plan = buildWritableHeaderPlan(
+      ["FB Name", "Tracking No", "Name", "COD", "Summary"],
+      ["subscriber_id", "status", "match_status", "send_status", "sent_at", "error"],
+    );
+
+    expect(plan.headerWrites).toEqual([
+      { header: "subscriber_id", index: 5, label: "conversation_id" },
+      { header: "status", index: 6, label: "Status" },
+      { header: "match_status", index: 7, label: "match_status" },
+      { header: "send_status", index: 8, label: "send_status" },
+      { header: "sent_at", index: 9, label: "sent_at" },
+      { header: "error", index: 10, label: "error" },
+    ]);
+    expect(plan.headerIndex.get("subscriber_id")).toBe(5);
+    expect(plan.headerIndex.get("status")).toBe(6);
+    expect(plan.headerIndex.get("match_status")).toBe(7);
+  });
+
+  it("reuses an existing conversation_id column instead of adding another one", () => {
+    const plan = buildWritableHeaderPlan(["FB Name", "Summary", "conversation_id"], ["subscriber_id"]);
+
+    expect(plan.headerWrites).toEqual([]);
+    expect(plan.headerIndex.get("subscriber_id")).toBe(2);
   });
 });
 

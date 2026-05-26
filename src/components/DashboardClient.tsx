@@ -16,6 +16,7 @@ import {
   getAutoMatchTargets,
   getBatchReadyOrders,
   getConversationId,
+  getDashboardRowStatus,
   type ConversationOverrideMap,
 } from "@/components/dashboardBulkActions";
 import { formatConversationDisplay } from "@/components/conversationDisplay";
@@ -127,6 +128,10 @@ export function DashboardClient() {
   const allVisibleSelected =
     visibleOrders.length > 0 && visibleOrders.every((order) => selectedRows[order.rowNumber]);
 
+  function updateLocalOrder(rowNumber: number, patch: Partial<TrackingOrder>) {
+    setOrders((current) => current.map((order) => (order.rowNumber === rowNumber ? { ...order, ...patch } : order)));
+  }
+
   async function matchConversation(
     order: TrackingOrder,
     options: { silent?: boolean; reload?: boolean; openCandidates?: boolean } = {},
@@ -145,14 +150,21 @@ export function DashboardClient() {
       });
 
       if (payload.status === "multiple_matches") {
+        updateLocalOrder(order.rowNumber, { match_status: "multiple_matches", error: "" });
         if (openCandidates) {
           setMatchState({ order, candidates: payload.candidates, manualValue: "" });
         }
       } else if (payload.status === "not_found") {
+        updateLocalOrder(order.rowNumber, { match_status: "not_found", error: "" });
         if (openCandidates) {
           setMatchState({ order, candidates: [], manualValue: "" });
         }
       } else if (payload.status === "matched") {
+        updateLocalOrder(order.rowNumber, {
+          subscriber_id: payload.subscriber_id,
+          match_status: "matched",
+          error: "",
+        });
         setConversationOverrides((current) => ({
           ...current,
           [order.rowNumber]: {
@@ -166,6 +178,7 @@ export function DashboardClient() {
         }
         return true;
       } else {
+        updateLocalOrder(order.rowNumber, { match_status: "error", error: payload.error });
         if (!silent) {
           setToast({ type: "error", message: payload.error });
         }
@@ -440,7 +453,7 @@ export function DashboardClient() {
           </div>
 
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[940px] border-collapse text-sm">
+            <table className="w-full min-w-[1040px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[var(--line)] text-left text-xs uppercase text-[var(--muted)]">
                   <th className="px-3 py-3 font-semibold">
@@ -457,6 +470,7 @@ export function DashboardClient() {
                   <th className="px-3 py-3 font-semibold">COD</th>
                   <th className="px-3 py-3 font-semibold">Message</th>
                   <th className="px-3 py-3 font-semibold">Conversation</th>
+                  <th className="px-3 py-3 font-semibold">Status</th>
                   <th className="px-3 py-3 font-semibold">Send</th>
                   <th className="px-3 py-3 font-semibold">Actions</th>
                 </tr>
@@ -464,14 +478,14 @@ export function DashboardClient() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-[var(--muted)]" colSpan={8}>
+                    <td className="px-3 py-8 text-center text-[var(--muted)]" colSpan={9}>
                       <Loader2 className="mx-auto mb-2 size-5 animate-spin" />
                       กำลังโหลดข้อมูล
                     </td>
                   </tr>
                 ) : visibleOrders.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-[var(--muted)]" colSpan={8}>
+                    <td className="px-3 py-8 text-center text-[var(--muted)]" colSpan={9}>
                       ไม่มีรายการในตัวกรองนี้
                     </td>
                   </tr>
@@ -486,6 +500,7 @@ export function DashboardClient() {
                         conversationId: order.subscriber_id,
                       },
                     );
+                    const rowStatus = getDashboardRowStatus(effectiveOrder, conversationOverrides);
                     const disabledReason = sendDisabledReason(effectiveOrder);
                     return (
                       <tr key={`${order.rowNumber}:${order.id}`} className="border-b border-[var(--line)] last:border-0">
@@ -522,6 +537,9 @@ export function DashboardClient() {
                           ) : (
                             "-"
                           )}
+                        </td>
+                        <td className="px-3 py-4">
+                          <StatusCheck status={rowStatus} />
                         </td>
                         <td className="px-3 py-4">
                           <StatusBadge status={order.send_status} />
@@ -646,6 +664,21 @@ function SmallButton({
     >
       {children}
     </button>
+  );
+}
+
+function StatusCheck({ status }: { status: ReturnType<typeof getDashboardRowStatus> }) {
+  const styles = {
+    danger: "border-rose-200 bg-rose-50 text-rose-700 accent-rose-600",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700 accent-emerald-600",
+    warning: "border-amber-200 bg-amber-50 text-amber-800 accent-amber-500",
+  }[status.tone];
+
+  return (
+    <span className={`inline-flex min-h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold ${styles}`}>
+      <input type="checkbox" checked readOnly aria-label={status.label} className="size-4" />
+      {status.label}
+    </span>
   );
 }
 

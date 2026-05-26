@@ -58,6 +58,7 @@ describe("orderActions", () => {
     });
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
       subscriber_id: "conversation_123",
+      status: "พร้อมส่ง",
       match_status: "matched",
       error: "",
     });
@@ -75,6 +76,7 @@ describe("orderActions", () => {
       candidates,
     });
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
+      status: "ต้องเลือก",
       match_status: "multiple_matches",
       error: "",
     });
@@ -84,6 +86,7 @@ describe("orderActions", () => {
     await expect(selectSubscriberForRow(2, "conversation_456")).resolves.toEqual({ status: "success" });
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
       subscriber_id: "conversation_456",
+      status: "พร้อมส่ง",
       match_status: "matched",
       error: "",
     });
@@ -99,6 +102,7 @@ describe("orderActions", () => {
     });
     expect(sendZernioInboxMessage).toHaveBeenCalledWith("conversation_123", "tracking message");
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
+      status: "ส่งแล้ว",
       send_status: "sent",
       sent_at: "2026-05-19T08:00:00.000Z",
       error: "",
