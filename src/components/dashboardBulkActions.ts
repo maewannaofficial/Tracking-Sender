@@ -34,31 +34,3 @@ export function getBatchReadyOrders(
       Boolean(getConversationId(order, overrides)),
   );
 }
-
-export function getDashboardRowStatus(order: TrackingOrder, overrides: ConversationOverrideMap) {
-  if (order.send_status === "sent") {
-    return { label: "ส่งแล้ว", tone: "success" as const };
-  }
-
-  if (order.send_status === "failed") {
-    return { label: "ส่งไม่สำเร็จ", tone: "danger" as const };
-  }
-
-  if (!order.message.trim()) {
-    return { label: "ไม่มีข้อความ", tone: "danger" as const };
-  }
-
-  if (order.match_status === "multiple_matches") {
-    return { label: "ต้องเลือก", tone: "warning" as const };
-  }
-
-  if (order.match_status === "error") {
-    return { label: "หาไม่เจอ", tone: "danger" as const };
-  }
-
-  if (!getConversationId(order, overrides) || order.match_status === "not_found") {
-    return { label: "หาไม่เจอ", tone: "danger" as const };
-  }
-
-  return { label: "พร้อมส่ง", tone: "success" as const };
-}

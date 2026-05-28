@@ -1,8 +1,6 @@
 import type { ZernioConversationCandidate } from "@/types/order";
 
 const ZERNIO_API_BASE = "https://zernio.com/api";
-const CONVERSATION_CACHE_MS = 2 * 60 * 1000;
-const MESSAGE_SCAN_LIMIT = 25;
 
 function getApiKey() {
   const apiKey = process.env.ZERNIO_API_KEY;
@@ -51,18 +49,6 @@ export type ZernioIntelligenceQuery = {
   accountId?: string;
 };
 
-type SearchableConversation = ZernioConversationCandidate & {
-  searchableText: string;
-};
-
-let searchableConversationCache:
-  | { expiresAt: number; conversations: SearchableConversation[] }
-  | null = null;
-
-export function clearZernioConversationCacheForTests() {
-  searchableConversationCache = null;
-}
-
 function appendOptionalParams(params: URLSearchParams, query: ZernioIntelligenceQuery) {
   if (query.fromDate) params.set("fromDate", query.fromDate);
   if (query.toDate) params.set("toDate", query.toDate);
@@ -78,25 +64,6 @@ function candidateName(candidate: Record<string, unknown>) {
     candidate.participantId;
 
   return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function bestMatchedName(searchName: string, conversation: ZernioConversationCandidate, searchableText: string) {
-  if (conversation.name && conversation.name !== "Facebook User") {
-    return conversation.name;
-  }
-
-  const normalizedSearchName = searchName.trim();
-  const regex = new RegExp(`(?:fb|facebook)\\s*[:：]\\s*(${escapeRegex(normalizedSearchName)})`, "i");
-  const match = searchableText.match(regex);
-  return match?.[1]?.trim() || normalizedSearchName || conversation.name;
-}
-
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeConversation(candidate: Record<string, unknown>) {
@@ -132,79 +99,6 @@ export function extractZernioConversations(payload: unknown): ZernioConversation
   });
 }
 
-async function getConversationMessages(conversationId: string, accountId: string) {
-  const params = new URLSearchParams({
-    accountId,
-    limit: "20",
-    sortOrder: "desc",
-  });
-  const payload = await zernioRequest(`/v1/inbox/conversations/${encodeURIComponent(conversationId)}/messages?${params.toString()}`);
-  const container = payload as Record<string, unknown>;
-  return Array.isArray(container.messages) ? container.messages : [];
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  mapper: (item: T) => Promise<R>,
-) {
-  const results: R[] = [];
-  let index = 0;
-
-  async function worker() {
-    while (index < items.length) {
-      const currentIndex = index;
-      index += 1;
-      results[currentIndex] = await mapper(items[currentIndex]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
-
-async function getSearchableConversations(seedConversations?: ZernioConversationCandidate[]) {
-  const now = Date.now();
-  if (searchableConversationCache && searchableConversationCache.expiresAt > now) {
-    return searchableConversationCache.conversations;
-  }
-
-  const conversations =
-    seedConversations ??
-    extractZernioConversations(
-      await zernioRequest(
-        `/v1/inbox/conversations?${new URLSearchParams({
-          platform: process.env.ZERNIO_PLATFORM ?? "facebook",
-          status: "active",
-          limit: "100",
-          sortOrder: "desc",
-        }).toString()}`,
-      ),
-    );
-
-  const searchableConversations = await mapWithConcurrency(conversations.slice(0, MESSAGE_SCAN_LIMIT), 2, async (conversation) => {
-    const messages = await getConversationMessages(conversation.conversation_id, conversation.account_id).catch(() => []);
-    const messageText = messages
-      .filter((message) => message && typeof message === "object")
-      .map((message) => {
-        const row = message as Record<string, unknown>;
-        return [row.senderName, row.message, row.subject].filter((value) => typeof value === "string").join(" ");
-      })
-      .join(" ");
-
-    return {
-      ...conversation,
-      searchableText: [conversation.name, messageText].join(" "),
-    };
-  });
-
-  searchableConversationCache = {
-    expiresAt: now + CONVERSATION_CACHE_MS,
-    conversations: searchableConversations,
-  };
-  return searchableConversations;
-}
-
 export async function findConversationsByName(name: string) {
   const params = new URLSearchParams({
     platform: process.env.ZERNIO_PLATFORM ?? "facebook",
@@ -213,24 +107,10 @@ export async function findConversationsByName(name: string) {
   });
   const payload = await zernioRequest(`/v1/inbox/conversations?${params.toString()}`);
   const normalizedName = name.trim().toLowerCase();
-  const conversations = extractZernioConversations(payload);
 
-  const directMatches = conversations.filter((conversation) =>
+  return extractZernioConversations(payload).filter((conversation) =>
     conversation.name.toLowerCase().includes(normalizedName),
   );
-  if (directMatches.length > 0) {
-    return directMatches;
-  }
-
-  const normalizedSearchName = normalizeSearchText(name);
-  return (await getSearchableConversations(conversations))
-    .filter((conversation) => normalizeSearchText(conversation.searchableText).includes(normalizedSearchName))
-    .map((conversation) => ({
-      conversation_id: conversation.conversation_id,
-      account_id: conversation.account_id,
-      name: bestMatchedName(name, conversation, conversation.searchableText),
-      platform: conversation.platform,
-    }));
 }
 
 export async function sendZernioInboxMessage(conversationId: string, message: string) {

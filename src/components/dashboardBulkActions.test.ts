@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   getAutoMatchTargets,
   getBatchReadyOrders,
-  getDashboardRowStatus,
   type ConversationOverrideMap,
 } from "./dashboardBulkActions";
 import type { TrackingOrder } from "@/types/order";
@@ -64,22 +63,5 @@ describe("dashboard bulk helpers", () => {
         overrides,
       ).map((order) => order.rowNumber),
     ).toEqual([2, 3]);
-  });
-
-  it("marks rows without a conversation or failed sends as attention statuses", () => {
-    expect(getDashboardRowStatus(baseOrder, {})).toEqual({
-      label: "หาไม่เจอ",
-      tone: "danger",
-    });
-    expect(getDashboardRowStatus({ ...baseOrder, send_status: "failed" }, {})).toEqual({
-      label: "ส่งไม่สำเร็จ",
-      tone: "danger",
-    });
-    expect(
-      getDashboardRowStatus({ ...baseOrder, subscriber_id: "conversation_1", match_status: "matched" }, {}),
-    ).toEqual({
-      label: "พร้อมส่ง",
-      tone: "success",
-    });
   });
 });
