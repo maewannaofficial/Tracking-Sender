@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAutoMatchTargets,
   getBatchReadyOrders,
+  getConversationStatus,
   type ConversationOverrideMap,
 } from "./dashboardBulkActions";
 import type { TrackingOrder } from "@/types/order";
@@ -63,5 +64,24 @@ describe("dashboard bulk helpers", () => {
         overrides,
       ).map((order) => order.rowNumber),
     ).toEqual([2, 3]);
+  });
+
+  it("shows Found only when a row has a conversation id", () => {
+    const overrides: ConversationOverrideMap = {
+      3: { conversationId: "conversation_3", name: "Matched Name" },
+    };
+
+    expect(getConversationStatus({ ...baseOrder, subscriber_id: "conversation_2" }, {})).toEqual({
+      label: "Found",
+      tone: "success",
+    });
+    expect(getConversationStatus({ ...baseOrder, rowNumber: 3 }, overrides)).toEqual({
+      label: "Found",
+      tone: "success",
+    });
+    expect(getConversationStatus(baseOrder, {})).toEqual({
+      label: "Not found",
+      tone: "danger",
+    });
   });
 });

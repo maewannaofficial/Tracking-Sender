@@ -16,10 +16,10 @@ import {
   getAutoMatchTargets,
   getBatchReadyOrders,
   getConversationId,
+  getConversationStatus,
   type ConversationOverrideMap,
 } from "@/components/dashboardBulkActions";
 import { formatConversationDisplay } from "@/components/conversationDisplay";
-import { StatusBadge } from "@/components/StatusBadge";
 import type { OrderStatusFilter, TrackingOrder, ZernioConversationCandidate } from "@/types/order";
 
 type Toast = { type: "success" | "error"; message: string };
@@ -457,7 +457,7 @@ export function DashboardClient() {
                   <th className="px-3 py-3 font-semibold">COD</th>
                   <th className="px-3 py-3 font-semibold">Message</th>
                   <th className="px-3 py-3 font-semibold">Conversation</th>
-                  <th className="px-3 py-3 font-semibold">Send</th>
+                  <th className="px-3 py-3 font-semibold">Status</th>
                   <th className="px-3 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -486,6 +486,7 @@ export function DashboardClient() {
                         conversationId: order.subscriber_id,
                       },
                     );
+                    const conversationStatus = getConversationStatus(effectiveOrder, conversationOverrides);
                     const disabledReason = sendDisabledReason(effectiveOrder);
                     return (
                       <tr key={`${order.rowNumber}:${order.id}`} className="border-b border-[var(--line)] last:border-0">
@@ -524,7 +525,7 @@ export function DashboardClient() {
                           )}
                         </td>
                         <td className="px-3 py-4">
-                          <StatusBadge status={order.send_status} />
+                          <ConversationStatusBadge status={conversationStatus} />
                         </td>
                         <td className="px-3 py-4">
                           <div className="flex flex-wrap gap-2">
@@ -646,6 +647,19 @@ function SmallButton({
     >
       {children}
     </button>
+  );
+}
+
+function ConversationStatusBadge({ status }: { status: ReturnType<typeof getConversationStatus> }) {
+  const className =
+    status.tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : "border-rose-200 bg-rose-50 text-rose-700";
+
+  return (
+    <span className={`inline-flex min-h-7 items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}>
+      {status.label}
+    </span>
   );
 }
 

@@ -34,3 +34,9 @@ export function getBatchReadyOrders(
       Boolean(getConversationId(order, overrides)),
   );
 }
+
+export function getConversationStatus(order: TrackingOrder, overrides: ConversationOverrideMap) {
+  return getConversationId(order, overrides)
+    ? { label: "Found", tone: "success" as const }
+    : { label: "Not found", tone: "danger" as const };
+}
