@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearZernioConversationCache,
   extractZernioConversations,
   findConversationsByName,
   getZernioAdCampaigns,
@@ -51,6 +52,7 @@ describe("extractZernioConversations", () => {
 describe("Zernio HTTP helpers", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearZernioConversationCache();
     process.env.ZERNIO_API_KEY = "zernio_key";
     process.env.ZERNIO_ACCOUNT_ID = "account_1";
   });
@@ -170,6 +172,35 @@ describe("Zernio HTTP helpers", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1][0])).toContain("cursor=page_2");
+  });
+
+  it("reuses fetched conversation pages for repeated name lookups", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: "conversation_1",
+              accountId: "account_1",
+              participantName: "Nan Napat",
+              platform: "facebook",
+            },
+            {
+              id: "conversation_2",
+              accountId: "account_1",
+              participantName: "Other Person",
+              platform: "facebook",
+            },
+          ],
+          pagination: { hasMore: false },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(findConversationsByName("Nan")).resolves.toHaveLength(1);
+    await expect(findConversationsByName("Other Person")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("matches names when only spacing or punctuation differs", async () => {

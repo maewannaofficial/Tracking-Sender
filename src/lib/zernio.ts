@@ -2,6 +2,16 @@ import type { ZernioConversationCandidate } from "@/types/order";
 
 const ZERNIO_API_BASE = "https://zernio.com/api";
 const DEFAULT_CONVERSATION_MATCH_PAGE_LIMIT = 10;
+const DEFAULT_CONVERSATION_CACHE_TTL_MS = 60_000;
+
+type ConversationCacheEntry = {
+  key: string;
+  expiresAt: number;
+  conversations: ZernioConversationCandidate[];
+};
+
+let conversationCache: ConversationCacheEntry | null = null;
+let conversationCachePromise: Promise<ConversationCacheEntry> | null = null;
 
 function getApiKey() {
   const apiKey = process.env.ZERNIO_API_KEY;
@@ -105,6 +115,19 @@ function getConversationMatchPageLimit() {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_CONVERSATION_MATCH_PAGE_LIMIT;
 }
 
+function getConversationCacheTtlMs() {
+  const parsed = Number(process.env.ZERNIO_CONVERSATION_CACHE_TTL_MS ?? DEFAULT_CONVERSATION_CACHE_TTL_MS);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_CONVERSATION_CACHE_TTL_MS;
+}
+
+function getConversationCacheKey() {
+  return JSON.stringify({
+    platform: process.env.ZERNIO_PLATFORM ?? "facebook",
+    status: "active",
+    pageLimit: getConversationMatchPageLimit(),
+  });
+}
+
 function normalizeNameForMatch(value: string) {
   return value
     .normalize("NFKC")
@@ -120,7 +143,7 @@ function conversationNameMatches(candidateNameValue: string, searchName: string)
   return Boolean(search && candidate.includes(search));
 }
 
-export async function findConversationsByName(name: string) {
+async function fetchConversationPages() {
   const conversations: ZernioConversationCandidate[] = [];
   let cursor = "";
 
@@ -146,6 +169,50 @@ export async function findConversationsByName(name: string) {
     }
     cursor = nextCursor;
   }
+
+  return conversations;
+}
+
+async function getCachedConversationPages() {
+  const cacheKey = getConversationCacheKey();
+  const now = Date.now();
+
+  if (conversationCache?.key === cacheKey && conversationCache.expiresAt > now) {
+    return conversationCache.conversations;
+  }
+
+  if (conversationCachePromise) {
+    const entry = await conversationCachePromise;
+    if (entry.key === cacheKey && entry.expiresAt > Date.now()) {
+      return entry.conversations;
+    }
+  }
+
+  conversationCachePromise = fetchConversationPages()
+    .then((conversations) => {
+      const entry = {
+        key: cacheKey,
+        expiresAt: Date.now() + getConversationCacheTtlMs(),
+        conversations,
+      };
+      conversationCache = entry;
+      return entry;
+    })
+    .finally(() => {
+      conversationCachePromise = null;
+    });
+
+  const entry = await conversationCachePromise;
+  return entry.conversations;
+}
+
+export function clearZernioConversationCache() {
+  conversationCache = null;
+  conversationCachePromise = null;
+}
+
+export async function findConversationsByName(name: string) {
+  const conversations = await getCachedConversationPages();
 
   return conversations.filter((conversation) => conversationNameMatches(conversation.name, name));
 }
