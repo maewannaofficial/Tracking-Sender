@@ -124,6 +124,98 @@ describe("Zernio HTTP helpers", () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain("platform=facebook");
   });
 
+  it("continues through paginated conversation results", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "conversation_1",
+                accountId: "account_1",
+                participantName: "Other Person",
+                platform: "facebook",
+              },
+            ],
+            pagination: { hasMore: true, nextCursor: "page_2" },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "conversation_2",
+                accountId: "account_1",
+                participantName: "Ratkaow Nitwiboon",
+                platform: "facebook",
+              },
+            ],
+            pagination: { hasMore: false },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    await expect(findConversationsByName("Ratkaow Nitwiboon")).resolves.toEqual([
+      {
+        conversation_id: "conversation_2",
+        account_id: "account_1",
+        name: "Ratkaow Nitwiboon",
+        platform: "facebook",
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("cursor=page_2");
+  });
+
+  it("matches names when only spacing or punctuation differs", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "conversation_1",
+                accountId: "account_1",
+                participantName: "เรณูตาทิพย์",
+                platform: "facebook",
+              },
+              {
+                id: "conversation_2",
+                accountId: "account_1",
+                participantName: "Ratkaow-Nitwiboon",
+                platform: "facebook",
+              },
+            ],
+            pagination: { hasMore: false },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(findConversationsByName("เรณู ตาทิพย์")).resolves.toEqual([
+      {
+        conversation_id: "conversation_1",
+        account_id: "account_1",
+        name: "เรณูตาทิพย์",
+        platform: "facebook",
+      },
+    ]);
+    await expect(findConversationsByName("Ratkaow Nitwiboon")).resolves.toEqual([
+      {
+        conversation_id: "conversation_2",
+        account_id: "account_1",
+        name: "Ratkaow-Nitwiboon",
+        platform: "facebook",
+      },
+    ]);
+  });
+
   it("loads ad campaigns with date, platform, and account filters", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ campaigns: [] }), { status: 200 }),

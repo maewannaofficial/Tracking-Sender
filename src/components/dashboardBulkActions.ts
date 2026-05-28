@@ -40,3 +40,15 @@ export function getConversationStatus(order: TrackingOrder, overrides: Conversat
     ? { label: "Found", tone: "success" as const }
     : { label: "Not found", tone: "danger" as const };
 }
+
+export function getDashboardStats(orders: TrackingOrder[], overrides: ConversationOverrideMap) {
+  const ordersWithFbName = orders.filter((order) => Boolean(order.fb_name.trim()));
+  const found = ordersWithFbName.filter((order) => Boolean(getConversationId(order, overrides))).length;
+
+  return {
+    total: ordersWithFbName.length,
+    found,
+    notFound: ordersWithFbName.length - found,
+    sent: ordersWithFbName.filter((order) => order.send_status === "sent").length,
+  };
+}

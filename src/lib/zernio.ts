@@ -1,6 +1,7 @@
 import type { ZernioConversationCandidate } from "@/types/order";
 
 const ZERNIO_API_BASE = "https://zernio.com/api";
+const DEFAULT_CONVERSATION_MATCH_PAGE_LIMIT = 10;
 
 function getApiKey() {
   const apiKey = process.env.ZERNIO_API_KEY;
@@ -99,18 +100,54 @@ export function extractZernioConversations(payload: unknown): ZernioConversation
   });
 }
 
-export async function findConversationsByName(name: string) {
-  const params = new URLSearchParams({
-    platform: process.env.ZERNIO_PLATFORM ?? "facebook",
-    status: "active",
-    limit: "100",
-  });
-  const payload = await zernioRequest(`/v1/inbox/conversations?${params.toString()}`);
-  const normalizedName = name.trim().toLowerCase();
+function getConversationMatchPageLimit() {
+  const parsed = Number(process.env.ZERNIO_MATCH_MAX_PAGES ?? DEFAULT_CONVERSATION_MATCH_PAGE_LIMIT);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_CONVERSATION_MATCH_PAGE_LIMIT;
+}
 
-  return extractZernioConversations(payload).filter((conversation) =>
-    conversation.name.toLowerCase().includes(normalizedName),
-  );
+function normalizeNameForMatch(value: string) {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "");
+}
+
+function conversationNameMatches(candidateNameValue: string, searchName: string) {
+  const candidate = normalizeNameForMatch(candidateNameValue);
+  const search = normalizeNameForMatch(searchName);
+
+  return Boolean(search && candidate.includes(search));
+}
+
+export async function findConversationsByName(name: string) {
+  const conversations: ZernioConversationCandidate[] = [];
+  let cursor = "";
+
+  for (let page = 0; page < getConversationMatchPageLimit(); page += 1) {
+    const params = new URLSearchParams({
+      platform: process.env.ZERNIO_PLATFORM ?? "facebook",
+      status: "active",
+      limit: "100",
+      sortOrder: "desc",
+    });
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+
+    const payload = await zernioRequest(`/v1/inbox/conversations?${params.toString()}`);
+    const container = payload as Record<string, unknown>;
+    const pagination = container.pagination as Record<string, unknown> | undefined;
+    conversations.push(...extractZernioConversations(payload));
+
+    const nextCursor = typeof pagination?.nextCursor === "string" ? pagination.nextCursor : "";
+    if (!pagination?.hasMore || !nextCursor) {
+      break;
+    }
+    cursor = nextCursor;
+  }
+
+  return conversations.filter((conversation) => conversationNameMatches(conversation.name, name));
 }
 
 export async function sendZernioInboxMessage(conversationId: string, message: string) {

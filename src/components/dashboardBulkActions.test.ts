@@ -4,6 +4,7 @@ import {
   getAutoMatchTargets,
   getBatchReadyOrders,
   getConversationStatus,
+  getDashboardStats,
   type ConversationOverrideMap,
 } from "./dashboardBulkActions";
 import type { TrackingOrder } from "@/types/order";
@@ -82,6 +83,30 @@ describe("dashboard bulk helpers", () => {
     expect(getConversationStatus(baseOrder, {})).toEqual({
       label: "Not found",
       tone: "danger",
+    });
+  });
+
+  it("counts totals, Found, and Not found only for rows with an FB name", () => {
+    const overrides: ConversationOverrideMap = {
+      4: { conversationId: "conversation_4", name: "Matched Name" },
+    };
+
+    expect(
+      getDashboardStats(
+        [
+          baseOrder,
+          { ...baseOrder, rowNumber: 3, fb_name: "", subscriber_id: "conversation_3" },
+          { ...baseOrder, rowNumber: 4 },
+          { ...baseOrder, rowNumber: 5, fb_name: "  " },
+          { ...baseOrder, rowNumber: 6, subscriber_id: "conversation_6" },
+        ],
+        overrides,
+      ),
+    ).toEqual({
+      total: 3,
+      found: 2,
+      notFound: 1,
+      sent: 0,
     });
   });
 });

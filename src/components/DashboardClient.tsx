@@ -17,6 +17,7 @@ import {
   getBatchReadyOrders,
   getConversationId,
   getConversationStatus,
+  getDashboardStats,
   type ConversationOverrideMap,
 } from "@/components/dashboardBulkActions";
 import { formatConversationDisplay } from "@/components/conversationDisplay";
@@ -90,17 +91,7 @@ export function DashboardClient() {
   }, [orders, query]);
 
   const stats = useMemo(
-    () => ({
-      total: orders.length,
-      ready: orders.filter((order) =>
-        !sendDisabledReason({
-          ...order,
-          subscriber_id: conversationOverrides[order.rowNumber]?.conversationId || order.subscriber_id,
-        }),
-      ).length,
-      failed: orders.filter((order) => order.send_status === "failed").length,
-      sent: orders.filter((order) => order.send_status === "sent").length,
-    }),
+    () => getDashboardStats(orders, conversationOverrides),
     [orders, conversationOverrides],
   );
 
@@ -386,8 +377,8 @@ export function DashboardClient() {
       <section className="mx-auto max-w-7xl px-4 py-6">
         <div className="grid gap-3 sm:grid-cols-4">
           <Metric label="รายการ" value={stats.total} />
-          <Metric label="พร้อมส่ง" value={stats.ready} />
-          <Metric label="ส่งไม่สำเร็จ" value={stats.failed} />
+          <Metric label="Found" value={stats.found} />
+          <Metric label="Not found" value={stats.notFound} />
           <Metric label="ส่งแล้ว" value={stats.sent} />
         </div>
 
