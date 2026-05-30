@@ -528,7 +528,7 @@ export function DashboardClient() {
                               {busyKey === `match:${order.rowNumber}` ? "Searching" : "เลือก conversation"}
                             </SmallButton>
                             <SmallButton
-                              onClick={() => setConfirmOrder(order)}
+                              onClick={() => setConfirmOrder(effectiveOrder)}
                               disabled={Boolean(disabledReason) || busyKey === `send:${order.rowNumber}`}
                               title={disabledReason}
                               primary
@@ -536,6 +536,9 @@ export function DashboardClient() {
                               {order.send_status === "failed" ? "Retry" : "Confirm Send"}
                             </SmallButton>
                           </div>
+                          {disabledReason ? (
+                            <p className="mt-2 max-w-sm text-xs text-[var(--danger)]">{disabledReason}</p>
+                          ) : null}
                           {order.error ? <p className="mt-2 max-w-sm text-xs text-[var(--danger)]">{order.error}</p> : null}
                         </td>
                       </tr>
@@ -718,6 +721,7 @@ function ConfirmModal({
       <div className="grid gap-2 text-sm">
         <p>ชื่อผู้รับ: {order.customer_name || "-"}</p>
         <p>เลขพัสดุ: {order.tracking_no || "-"}</p>
+        <p>Conversation: {order.subscriber_id || "-"}</p>
         <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--line)] bg-[var(--panel-muted)] p-4 leading-6">
           {order.message}
         </pre>
