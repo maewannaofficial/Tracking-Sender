@@ -158,6 +158,37 @@ describe("normalizeSheetRows", () => {
 
     expect(normalizeSheetRows(rows)[0].message).toBe("custom message");
   });
+  it("supports a single Status column for send state without match_status or send_status columns", () => {
+    const rows = [
+      [
+        "id",
+        "fb_name",
+        "tracking_no",
+        "customer_name",
+        "cod_amount",
+        "message",
+        "Status",
+        "conversation_id",
+        "sent_at",
+        "error",
+      ],
+      ["1", "Nan Napat", "TH123456789", "Nan", "0", "custom", "sent", "conversation_1", "2026-05-30", ""],
+      ["2", "No Match", "TH987", "No Match", "0", "custom", "failed", "", "", "send failed"],
+    ];
+
+    const orders = normalizeSheetRows(rows);
+
+    expect(orders[0]).toMatchObject({
+      subscriber_id: "conversation_1",
+      match_status: "matched",
+      send_status: "sent",
+    });
+    expect(orders[1]).toMatchObject({
+      subscriber_id: "",
+      match_status: "pending",
+      send_status: "failed",
+    });
+  });
 });
 
 describe("filterOrdersByStatus", () => {
@@ -171,7 +202,18 @@ describe("filterOrdersByStatus", () => {
 
     expect(filterOrdersByStatus(orders).map((order) => order.id)).toEqual(["1", "2"]);
     expect(filterOrdersByStatus(orders, "sent").map((order) => order.id)).toEqual(["3"]);
-    expect(filterOrdersByStatus(orders, "not_found").map((order) => order.id)).toEqual(["2"]);
+    expect(filterOrdersByStatus(orders, "not_found").map((order) => order.id)).toEqual(["1", "2"]);
     expect(filterOrdersByStatus(orders, "all")).toHaveLength(3);
+  });
+
+  it("treats not_found as rows with FB name but no conversation id", () => {
+    const orders = normalizeSheetRows([
+      ["id", "fb_name", "message", "Status", "conversation_id"],
+      ["1", "A", "custom", "pending", ""],
+      ["2", "B", "custom", "pending", "conversation_2"],
+      ["3", "", "custom", "pending", ""],
+    ]);
+
+    expect(filterOrdersByStatus(orders, "not_found").map((order) => order.id)).toEqual(["1"]);
   });
 });

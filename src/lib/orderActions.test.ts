@@ -58,7 +58,6 @@ describe("orderActions", () => {
     });
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
       subscriber_id: "conversation_123",
-      match_status: "matched",
       error: "",
     });
   });
@@ -75,7 +74,6 @@ describe("orderActions", () => {
       candidates,
     });
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
-      match_status: "multiple_matches",
       error: "",
     });
   });
@@ -84,7 +82,6 @@ describe("orderActions", () => {
     await expect(selectSubscriberForRow(2, "conversation_456")).resolves.toEqual({ status: "success" });
     expect(updateOrderCells).toHaveBeenCalledWith(2, {
       subscriber_id: "conversation_456",
-      match_status: "matched",
       error: "",
     });
   });

@@ -8,7 +8,6 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
 
     if (candidates.length === 0) {
       await updateOrderCells(rowNumber, {
-        match_status: "not_found",
         error: "",
       });
       return { status: "not_found" as const };
@@ -18,7 +17,6 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
       const [subscriber] = candidates;
       await updateOrderCells(rowNumber, {
         subscriber_id: subscriber.conversation_id,
-        match_status: "matched",
         error: "",
       });
       return {
@@ -29,7 +27,6 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
     }
 
     await updateOrderCells(rowNumber, {
-      match_status: "multiple_matches",
       error: "",
     });
     return {
@@ -39,7 +36,6 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown matching error";
     await updateOrderCells(rowNumber, {
-      match_status: "error",
       error: message,
     });
     return { status: "error" as const, error: message };
@@ -49,7 +45,6 @@ export async function matchSubscriberForRow(rowNumber: number, fb_name: string) 
 export async function selectSubscriberForRow(rowNumber: number, subscriber_id: string) {
   await updateOrderCells(rowNumber, {
     subscriber_id,
-    match_status: "matched",
     error: "",
   });
 

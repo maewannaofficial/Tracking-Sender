@@ -43,7 +43,7 @@ FB Name | ยอดปลายทาง (ถ้ามี) | ข้อควา�
 ถ้าต้องการให้ระบบบันทึกสถานะกลับ Sheet ค่อยเพิ่มคอลัมน์ optional เหล่านี้ภายหลัง:
 
 ```text
-conversation_id, send_status, sent_at, error
+conversation_id, Status, sent_at, error
 ```
 
 แชร์ไฟล์ Sheet ให้ service account email ด้วยสิทธิ์ editor
@@ -100,5 +100,5 @@ npm run build
 - API keys อยู่ฝั่ง server เท่านั้น
 - `/dashboard` และ `/api/*` ตรวจ httpOnly session cookie
 - `POST /api/send-message` reread row จาก Google Sheet ก่อนส่งทุกครั้ง
-- ระบบกันส่งซ้ำเมื่อมีคอลัมน์ `send_status` และค่านั้นเป็น `sent`
-- ถ้า Zernio ส่งไม่สำเร็จ ระบบเขียน `send_status = failed` และบันทึก error กลับไปที่ Sheet เฉพาะเมื่อมีคอลัมน์เหล่านั้นอยู่
+- ระบบกันส่งซ้ำเมื่อมีคอลัมน์ `Status` และค่านั้นเป็น `sent`
+- ถ้าส่งไม่สำเร็จ ระบบเขียน `Status = failed` และบันทึก error กลับไปที่ Sheet เฉพาะเมื่อมีคอลัมน์เหล่านั้นอยู่

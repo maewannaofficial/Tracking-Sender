@@ -223,11 +223,13 @@ export function normalizeSheetRows(values: string[][] = []): TrackingOrder[] {
             cod_amount,
           }),
         subscriber_id: cell(row, headerIndex, "subscriber_id"),
-        match_status: normalizeStatus(
-          cell(row, headerIndex, "match_status"),
-          "pending",
-          matchStatuses,
-        ),
+        match_status: cell(row, headerIndex, "subscriber_id")
+          ? "matched"
+          : normalizeStatus(
+              cell(row, headerIndex, "match_status"),
+              "pending",
+              matchStatuses,
+            ),
         send_status: normalizeStatus(cell(row, headerIndex, "send_status"), "pending", sendStatuses),
         sent_at: cell(row, headerIndex, "sent_at"),
         error: cell(row, headerIndex, "error"),
@@ -243,6 +245,10 @@ export function filterOrdersByStatus(orders: TrackingOrder[], status?: OrderStat
 
   if (status === "all") {
     return orders;
+  }
+
+  if (status === "not_found") {
+    return orders.filter((order) => Boolean(order.fb_name.trim()) && !order.subscriber_id.trim());
   }
 
   return orders.filter((order) => order.send_status === status || order.match_status === status);
