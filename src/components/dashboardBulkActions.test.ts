@@ -44,7 +44,7 @@ describe("dashboard bulk helpers", () => {
         overrides,
         attempted,
       ).map((order) => order.rowNumber),
-    ).toEqual([2]);
+    ).toEqual([2, 7]);
   });
 
   it("returns selected rows that have a conversation and message for batch sending", () => {

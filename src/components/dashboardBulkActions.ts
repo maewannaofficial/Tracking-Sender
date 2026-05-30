@@ -14,7 +14,6 @@ export function getAutoMatchTargets(
 ) {
   return orders.filter(
     (order) =>
-      order.send_status !== "sent" &&
       Boolean(order.fb_name.trim()) &&
       !getConversationId(order, overrides) &&
       !attemptedRowNumbers.has(order.rowNumber),
