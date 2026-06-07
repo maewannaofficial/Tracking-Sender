@@ -280,35 +280,24 @@ export function DashboardClient() {
 
   async function sendSelectedMessages() {
     setBusyKey("batch-send");
-    let sentCount = 0;
-    let failedCount = 0;
 
     try {
-      for (const order of batchReadyOrders) {
-        const payload = await requestJson<{ status: "sent"; sent_at: string } | { status: "failed"; error: string }>(
-          "/api/send-message",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              rowNumber: order.rowNumber,
-              subscriber_id: getConversationId(order, conversationOverrides),
-            }),
-          },
-        );
-
-        if (payload.status === "sent") {
-          sentCount += 1;
-        } else {
-          failedCount += 1;
-        }
-      }
+      const payload = await requestJson<{ sentCount: number; failedCount: number }>("/api/send-messages", {
+        method: "POST",
+        body: JSON.stringify({
+          items: batchReadyOrders.map((order) => ({
+            rowNumber: order.rowNumber,
+            subscriber_id: getConversationId(order, conversationOverrides),
+          })),
+        }),
+      });
 
       setToast({
-        type: failedCount > 0 ? "error" : "success",
+        type: payload.failedCount > 0 ? "error" : "success",
         message:
-          failedCount > 0
-            ? `ส่งสำเร็จ ${sentCount} รายการ, ไม่สำเร็จ ${failedCount} รายการ`
-            : `ส่งสำเร็จ ${sentCount} รายการ`,
+          payload.failedCount > 0
+            ? `ส่งสำเร็จ ${payload.sentCount} รายการ, ไม่สำเร็จ ${payload.failedCount} รายการ`
+            : `ส่งสำเร็จ ${payload.sentCount} รายการ`,
       });
       setSelectedRows({});
       setIsBatchConfirmOpen(false);
@@ -840,3 +829,4 @@ function MatchModal({
     </ModalShell>
   );
 }
+

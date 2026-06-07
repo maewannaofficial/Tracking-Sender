@@ -50,6 +50,8 @@ const sendStatuses = new Set<SendStatus>(["pending", "sent", "failed", "skipped"
 
 let sheetsClient: sheets_v4.Sheets | null = null;
 let resolvedSheetName: string | null = null;
+let cachedHeaderIndex: Map<string, number> | null = null;
+let cachedHeaderSheetName = "";
 
 function getEnv(name: string) {
   const value = normalizeEnvValue(process.env[name] ?? "");
@@ -284,11 +286,16 @@ function columnName(index: number) {
 
 export async function updateOrderCells(rowNumber: number, patch: Partial<Record<SheetHeader, string | number>>) {
   const sheetName = await getConfiguredSheetName();
-  const headerResponse = await getSheetsClient().spreadsheets.values.get({
-    spreadsheetId: getSpreadsheetId(),
-    range: formatSheetRange(sheetName, "A1:K1"),
-  });
-  const headerIndex = buildHeaderIndex(((headerResponse.data.values ?? [[]]) as string[][])[0] ?? []);
+  let headerIndex = cachedHeaderSheetName === sheetName ? cachedHeaderIndex : null;
+  if (!headerIndex) {
+    const headerResponse = await getSheetsClient().spreadsheets.values.get({
+      spreadsheetId: getSpreadsheetId(),
+      range: formatSheetRange(sheetName, "A1:K1"),
+    });
+    headerIndex = buildHeaderIndex(((headerResponse.data.values ?? [[]]) as string[][])[0] ?? []);
+    cachedHeaderIndex = headerIndex;
+    cachedHeaderSheetName = sheetName;
+  }
   const data = Object.entries(patch).flatMap(([header, value]) => {
     const index = headerIndex.get(header);
     if (index === undefined) {

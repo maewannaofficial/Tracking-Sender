@@ -1,4 +1,4 @@
-import { getOrderByRowNumber, updateOrderCells } from "@/lib/googleSheets";
+import { getOrderByRowNumber, getOrders, updateOrderCells } from "@/lib/googleSheets";
 import { validateBeforeSend } from "@/lib/validation";
 import { findConversationsByName, sendZernioInboxMessage } from "@/lib/zernio";
 
@@ -85,4 +85,59 @@ export async function sendMessageForRow(rowNumber: number, now = new Date(), sel
     });
     return { status: "failed" as const, error: message };
   }
+}
+
+export async function sendMessagesForRows(
+  items: Array<{ rowNumber: number; subscriber_id?: string }>,
+  now = new Date(),
+) {
+  const orders = await getOrders("all");
+  const ordersByRowNumber = new Map(orders.map((order) => [order.rowNumber, order]));
+  const results = [];
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (const item of items) {
+    const order = ordersByRowNumber.get(item.rowNumber) ?? null;
+
+    if (!order) {
+      failedCount += 1;
+      results.push({ rowNumber: item.rowNumber, status: "failed" as const, error: "ไม่พบรายการใน Google Sheet" });
+      continue;
+    }
+
+    const orderToSend = {
+      ...order,
+      subscriber_id: item.subscriber_id?.trim() || order.subscriber_id,
+      match_status: item.subscriber_id?.trim() ? ("matched" as const) : order.match_status,
+    };
+    const validationError = validateBeforeSend(orderToSend);
+    if (validationError) {
+      failedCount += 1;
+      results.push({ rowNumber: item.rowNumber, status: "failed" as const, error: validationError });
+      continue;
+    }
+
+    try {
+      await sendZernioInboxMessage(orderToSend.subscriber_id, orderToSend.message);
+      const sent_at = now.toISOString();
+      await updateOrderCells(item.rowNumber, {
+        send_status: "sent",
+        sent_at,
+        error: "",
+      });
+      sentCount += 1;
+      results.push({ rowNumber: item.rowNumber, status: "sent" as const, sent_at });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown sending error";
+      await updateOrderCells(item.rowNumber, {
+        send_status: "failed",
+        error: message,
+      });
+      failedCount += 1;
+      results.push({ rowNumber: item.rowNumber, status: "failed" as const, error: message });
+    }
+  }
+
+  return { sentCount, failedCount, results };
 }

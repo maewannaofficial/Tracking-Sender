@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TrackingOrder } from "@/types/order";
-import { matchSubscriberForRow, selectSubscriberForRow, sendMessageForRow } from "./orderActions";
+import { matchSubscriberForRow, selectSubscriberForRow, sendMessageForRow, sendMessagesForRows } from "./orderActions";
 
-const { findConversationsByName, sendZernioInboxMessage, getOrderByRowNumber, updateOrderCells } =
+const { findConversationsByName, sendZernioInboxMessage, getOrderByRowNumber, getOrders, updateOrderCells } =
   vi.hoisted(() => ({
     findConversationsByName: vi.fn(),
     sendZernioInboxMessage: vi.fn(),
     getOrderByRowNumber: vi.fn(),
+    getOrders: vi.fn(),
     updateOrderCells: vi.fn(),
   }));
 
@@ -18,6 +19,7 @@ vi.mock("./zernio", () => ({
 
 vi.mock("./googleSheets", () => ({
   getOrderByRowNumber,
+  getOrders,
   updateOrderCells,
 }));
 
@@ -123,5 +125,34 @@ describe("orderActions", () => {
       error: "รายการนี้ส่งไปแล้ว",
     });
     expect(sendZernioInboxMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends a batch after reading orders once", async () => {
+    getOrders.mockResolvedValue([
+      readyOrder,
+      { ...readyOrder, rowNumber: 3, id: "2", subscriber_id: "" },
+    ]);
+    sendZernioInboxMessage.mockResolvedValue({ success: true });
+
+    await expect(
+      sendMessagesForRows(
+        [
+          { rowNumber: 2 },
+          { rowNumber: 3, subscriber_id: "conversation_999" },
+        ],
+        new Date("2026-05-19T08:00:00.000Z"),
+      ),
+    ).resolves.toEqual({
+      sentCount: 2,
+      failedCount: 0,
+      results: [
+        { rowNumber: 2, status: "sent", sent_at: "2026-05-19T08:00:00.000Z" },
+        { rowNumber: 3, status: "sent", sent_at: "2026-05-19T08:00:00.000Z" },
+      ],
+    });
+
+    expect(getOrders).toHaveBeenCalledTimes(1);
+    expect(getOrderByRowNumber).not.toHaveBeenCalled();
+    expect(sendZernioInboxMessage).toHaveBeenCalledTimes(2);
   });
 });
