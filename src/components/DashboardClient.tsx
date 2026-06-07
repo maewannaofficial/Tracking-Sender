@@ -282,7 +282,11 @@ export function DashboardClient() {
     setBusyKey("batch-send");
 
     try {
-      const payload = await requestJson<{ sentCount: number; failedCount: number }>("/api/send-messages", {
+      const payload = await requestJson<{
+        sentCount: number;
+        failedCount: number;
+        results: Array<{ rowNumber: number; status: "sent" | "failed"; error?: string }>;
+      }>("/api/send-messages", {
         method: "POST",
         body: JSON.stringify({
           items: batchReadyOrders.map((order) => ({
@@ -296,7 +300,9 @@ export function DashboardClient() {
         type: payload.failedCount > 0 ? "error" : "success",
         message:
           payload.failedCount > 0
-            ? `ส่งสำเร็จ ${payload.sentCount} รายการ, ไม่สำเร็จ ${payload.failedCount} รายการ`
+            ? `ส่งสำเร็จ ${payload.sentCount} รายการ, ไม่สำเร็จ ${payload.failedCount} รายการ: ${
+                payload.results.find((result) => result.status === "failed")?.error ?? "ไม่ทราบสาเหตุ"
+              }`
             : `ส่งสำเร็จ ${payload.sentCount} รายการ`,
       });
       setSelectedRows({});

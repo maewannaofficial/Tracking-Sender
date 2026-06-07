@@ -26,7 +26,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await sendMessagesForRows(parsed.data.items, new Date()));
+    const result = await sendMessagesForRows(parsed.data.items, new Date());
+    if (result.failedCount > 0) {
+      console.warn(
+        "Batch send failures",
+        result.results
+          .filter((item) => item.status === "failed")
+          .slice(0, 5)
+          .map((item) => ({ rowNumber: item.rowNumber, error: "error" in item ? item.error : "" })),
+      );
+    }
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Batch send failed" },
