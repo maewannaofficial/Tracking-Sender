@@ -158,8 +158,6 @@ export async function sendZernioInboxMessage(conversationId: string, message: st
     body: JSON.stringify({
       accountId,
       message,
-      messagingType: "MESSAGE_TAG",
-      messageTag: process.env.ZERNIO_MESSAGE_TAG ?? "POST_PURCHASE_UPDATE",
     }),
   });
 }

@@ -55,7 +55,7 @@ describe("Zernio HTTP helpers", () => {
     process.env.ZERNIO_ACCOUNT_ID = "account_1";
   });
 
-  it("sends inbox messages with accountId, messaging type, and post-purchase tag", async () => {
+  it("sends inbox messages with accountId and message text", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -81,8 +81,6 @@ describe("Zernio HTTP helpers", () => {
         body: JSON.stringify({
           accountId: "account_1",
           message: "tracking message",
-          messagingType: "MESSAGE_TAG",
-          messageTag: "POST_PURCHASE_UPDATE",
         }),
       }),
     );
